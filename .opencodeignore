@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# TypeScript / Node
+node_modules/
+dist/
+build/
+.next/
+*.lock
+
+# General
+.git/
+.DS_Store
+*.log
+.env
+.env.*
