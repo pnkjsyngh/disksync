@@ -1,0 +1,8 @@
+{
+  "mock": true,
+  "disks": {
+    "1": "/mnt/disk1",
+    "2": "/mnt/disk2",
+    "3": "/mnt/disk3"
+  }
+}
