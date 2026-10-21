@@ -25,4 +25,22 @@ uvicorn backend.main:app --reload
 streamlit run frontend/app.py
 ```
 
-Set `"mock": false` in `config/config.json` to detect real disks via `lsblk`.
+Disks are configured by filesystem UUID in `config/config.json` (find them with `lsblk -f`).
+Set `"mock": true` to use fake disks for development.
+
+## Comparing disks (read-only)
+
+```bash
+python -m backend.scanner          # index all disks into data/disksync.db
+python -m backend.scanner --hash   # also hash files whose size matches but mtime differs
+python -m backend.report           # print summary, write data/report.json
+```
+
+The dashboard's "Diff report" tab shows the same results. Disk health needs
+`smartmontools` and root access to `smartctl`; otherwise it shows "unknown".
+
+## Tests
+
+```bash
+python -m pytest -q
+```

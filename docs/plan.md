@@ -57,15 +57,15 @@ A self-hosted web application that keeps 3 external hard disks mirrored for redu
 
 Read-only. Nothing is written to the disks.
 
-- [ ] Fix `lsblk` parsing (`--bytes`, partitions/children, all mountpoints)
-- [ ] Real used/free via `shutil.disk_usage`
-- [ ] SMART health via `smartctl -H` (graceful fallback when USB bridge blocks SMART)
-- [ ] Identify disks by filesystem UUID in config; report filesystem type
-- [ ] Config: mark primary disk; reload without restart
-- [ ] Scanner: walk each disk, record path/size/mtime/hash into SQLite
-- [ ] 3-way diff report: identical / missing on some disks / same path, different content
-- [ ] Dashboard: disk status + diff report view
-- [ ] CI: pytest workflow on PRs; fix cwd-dependent test
+- [x] Fix `lsblk` parsing (`--bytes`, partitions/children, all mountpoints)
+- [x] Real used/free via `shutil.disk_usage`
+- [x] SMART health via `smartctl -H` (graceful fallback when USB bridge blocks SMART) — needs smartmontools + root on host
+- [x] Identify disks by filesystem UUID in config; report filesystem type
+- [x] Config: mark primary disk; reload without restart
+- [x] Scanner: walk each disk, record path/size/mtime/hash into SQLite
+- [x] 3-way diff report: identical / missing on some disks / same path, different content
+- [x] Dashboard: disk status + diff report view
+- [x] CI: pytest workflow on PRs; fix cwd-dependent test
 
 ### M2: Initial Reconcile
 
@@ -213,8 +213,27 @@ disksync/
 
 -----
 
+## Current Disks (recorded 2026-10-22)
+
+| Id | Label | Device | FS | UUID | Hardware |
+|---|---|---|---|---|---|
+| 1 | FamilyHD_1 | sdd1 | exFAT | 5C3E-3410 | Toshiba MQ04UBD200 |
+| 2 | FamilyHD_2 | sdc1 | NTFS | 5418644300C99F4C | Seagate "Portable" NT3DKZX7 |
+| 3 | FamilyHD_3 | sdb1 | NTFS | 5418644300C99F56 | Seagate "Portable" NT3DKZZL |
+
+Host runs Ubuntu desktop (not Server); disks are auto-mounted under `/media/mopsie/` until fstab mounts are set up in M3. An unused 140 GB ext4 partition (`sda5`) is available for index/staging.
+
+### First M1 diff (metadata scan)
+
+- 86,353 files (628.9 GB) identical on all 3 disks; no conflicts, case issues or Windows-invalid names
+- 590 files (6.7 GB) only on disk 2, all in `Pankaj Files/PICS_phone`
+- Disks were previously mirrored with FreeFileSync (`sync.ffs_db`) and used on macOS
+- Not scanned (ignored): `.Trashes` holds ~236 GB on each disk (macOS trash never emptied) and `$RECYCLE.BIN` ~52 GB on disk 1. This accounts for the gap between `df` usage and the scanned size.
+
 ## Open Items
 
-- Record each disk's current filesystem and UUID (`lsblk -f`) on the mini PC
-- Choose which disk is initially primary (likely the most complete after the M1 diff)
+- Decide what to do with ~236 GB macOS `.Trashes` per disk and 52 GB `$RECYCLE.BIN` on disk 1 (review, recover or empty)
+- Primary: disk 2 (most complete, NTFS/journaled); confirm
+- Install `smartmontools` and decide how the service gets root for `smartctl` (sudoers rule)
+- Install `python3.12-venv` on the host
 - Decide trash retention period (default 30 days)
