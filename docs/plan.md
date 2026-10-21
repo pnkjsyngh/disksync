@@ -223,6 +223,8 @@ disksync/
 
 Host runs Ubuntu desktop (not Server); disks are auto-mounted under `/media/mopsie/` until fstab mounts are set up in M3. An unused 140 GB ext4 partition (`sda5`) is available for index/staging.
 
+SMART: works on disk 1 (Toshiba, healthy) via the `deploy/disksync-smart` sudo helper. The Seagate Portable enclosures (USB `0bc2:2344`, disks 2 and 3) block SMART in every `-d sat` mode, so their health shows "unknown"; scan read errors and scrub hash mismatches are the failure signal for them.
+
 ### First M1 diff (metadata scan)
 
 - 86,353 files (628.9 GB) identical on all 3 disks; no conflicts, case issues or Windows-invalid names
@@ -234,6 +236,4 @@ Host runs Ubuntu desktop (not Server); disks are auto-mounted under `/media/mops
 
 - Decide what to do with ~236 GB macOS `.Trashes` per disk and 52 GB `$RECYCLE.BIN` on disk 1 (review, recover or empty)
 - Primary: disk 2 (most complete, NTFS/journaled); confirm
-- Install `smartmontools` and decide how the service gets root for `smartctl` (sudoers rule)
-- Install `python3.12-venv` on the host
 - Decide trash retention period (default 30 days)
