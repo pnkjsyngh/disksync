@@ -1,8 +1,29 @@
 {
-  "mock": true,
+  "mock": false,
+  "primary": "2",
+  "db_path": "data/disksync.db",
   "disks": {
-    "1": "/mnt/disk1",
-    "2": "/mnt/disk2",
-    "3": "/mnt/disk3"
-  }
+    "1": {"uuid": "5C3E-3410", "label": "FamilyHD_1", "mount": "/media/mopsie/FamilyHD_1"},
+    "2": {"uuid": "5418644300C99F4C", "label": "FamilyHD_2", "mount": "/media/mopsie/FamilyHD_2"},
+    "3": {"uuid": "5418644300C99F56", "label": "FamilyHD_3", "mount": "/media/mopsie/FamilyHD_3"}
+  },
+  "ignore": [
+    "$RECYCLE.BIN",
+    "System Volume Information",
+    ".Spotlight-V100",
+    ".Trashes",
+    ".TemporaryItems",
+    ".fseventsd",
+    ".DocumentRevisions-V100",
+    ".disksync-trash",
+    "sync.ffs_db",
+    "sync.ffs_lock",
+    ".DS_Store",
+    "Thumbs.db",
+    "._*",
+    "/Seagate",
+    "/Autorun.inf",
+    "/.VolumeIcon.*"
+  ],
+  "mtime_tolerance_s": 2
 }

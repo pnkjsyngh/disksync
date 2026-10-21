@@ -1,0 +1,10 @@
+#!/bin/sh
+# Read-only SMART health check for disksync, meant to be run via sudo.
+# Accepts exactly one whole-disk device like /dev/sdb and nothing else,
+# so the sudoers rule can't be used to pass other smartctl options.
+set -eu
+case "${1:-}" in
+  /dev/sd[a-z]|/dev/sd[a-z][a-z]) ;;
+  *) echo "usage: disksync-smart /dev/sdX" >&2; exit 2 ;;
+esac
+exec /usr/sbin/smartctl -H -j "$1"
