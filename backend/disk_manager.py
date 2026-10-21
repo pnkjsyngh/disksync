@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -112,28 +113,38 @@ def _apply_usage(disk: dict[str, Any]) -> None:
     disk["free_gb"] = round(usage.free / GB, 1)
 
 
+SMART_HELPER = "/usr/local/sbin/disksync-smart"
+
+
+def _smart_command(device: str) -> list[str] | None:
+    # smartctl needs root. When not running as root, go through the
+    # restricted sudo helper in deploy/ if it has been installed.
+    if os.geteuid() == 0 and shutil.which("smartctl"):
+        return ["smartctl", "-H", "-j", device]
+    if os.path.exists(SMART_HELPER):
+        return ["sudo", "-n", SMART_HELPER, device]
+    return None
+
+
 def _smart_health(device: str | None) -> str:
     """Return "healthy", "failing" or "unknown".
 
-    smartctl usually needs root; without it (or behind a USB bridge that
-    blocks SMART) we report "unknown" rather than failing the request.
+    Without root access (or behind a USB bridge that blocks SMART) we
+    report "unknown" rather than failing the request.
     """
-    if not device or not shutil.which("smartctl"):
+    cmd = _smart_command(device) if device else None
+    if cmd is None:
         return "unknown"
-    for extra in ([], ["-d", "sat"]):
-        try:
-            proc = subprocess.run(
-                ["smartctl", "-H", "-j", *extra, device],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            data = json.loads(proc.stdout or "{}")
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
-            continue
-        status = data.get("smart_status", {})
-        if "passed" in status:
-            return "healthy" if status["passed"] else "failing"
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        data = json.loads(proc.stdout or "{}")
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError):
+        return "unknown"
+    # smartctl's exit status is a bitmask that is often non-zero even when
+    # it produced a valid report, so rely on the JSON instead.
+    status = data.get("smart_status", {})
+    if "passed" in status:
+        return "healthy" if status["passed"] else "failing"
     return "unknown"
 
 

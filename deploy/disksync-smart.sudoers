@@ -1,0 +1,3 @@
+# Let the disksync user read SMART health without a password.
+# Install: sudo install -m 0440 deploy/disksync-smart.sudoers /etc/sudoers.d/disksync-smart
+mopsie ALL=(root) NOPASSWD: /usr/local/sbin/disksync-smart

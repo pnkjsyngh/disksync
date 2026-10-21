@@ -106,3 +106,22 @@ def test_missing_disk_reported(tmp_path: Path, monkeypatch) -> None:
     assert len(disks) == 1
     assert not disks[0].present
     assert disks[0].health == "missing"
+
+
+def test_smart_health_reads_json_despite_exit_status(monkeypatch) -> None:
+    import subprocess
+
+    from backend import disk_manager
+
+    monkeypatch.setattr(disk_manager, "_smart_command", lambda dev: ["smartctl", dev])
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 4, stdout=json.dumps(fake_run.payload), stderr="")
+
+    monkeypatch.setattr(disk_manager.subprocess, "run", fake_run)
+    fake_run.payload = {"smart_status": {"passed": True}}
+    assert disk_manager._smart_health("/dev/sdb") == "healthy"
+    fake_run.payload = {"smart_status": {"passed": False}}
+    assert disk_manager._smart_health("/dev/sdb") == "failing"
+    fake_run.payload = {}
+    assert disk_manager._smart_health("/dev/sdb") == "unknown"

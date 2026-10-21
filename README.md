@@ -36,8 +36,16 @@ python -m backend.scanner --hash   # also hash files whose size matches but mtim
 python -m backend.report           # print summary, write data/report.json
 ```
 
-The dashboard's "Diff report" tab shows the same results. Disk health needs
-`smartmontools` and root access to `smartctl`; otherwise it shows "unknown".
+The dashboard's "Diff report" tab shows the same results.
+
+Disk health needs `smartmontools` and root. To let disksync read it as a normal
+user, install the restricted helper (it only accepts a `/dev/sdX` argument):
+
+```bash
+sudo install -m 0755 deploy/disksync-smart /usr/local/sbin/disksync-smart
+sudo install -m 0440 deploy/disksync-smart.sudoers /etc/sudoers.d/disksync-smart
+sudo visudo -c
+```
 
 ## Tests
 
