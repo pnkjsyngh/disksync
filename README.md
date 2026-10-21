@@ -1,12 +1,12 @@
 # disksync
 
-RAID 1 mirroring system for syncing data across multiple external hard disks.
+Self-hosted mirroring system that keeps 3 external hard disks in sync, running on a home mini PC. See [docs/plan.md](docs/plan.md).
 
 ## Architecture
 
 - **Backend**: FastAPI (Python)
 - **Frontend**: Streamlit (MVP) → migrating to custom HTML/JS
-- **Storage**: RAID 1 mirroring across 3 × 2TB disks
+- **Storage**: app-level mirroring (primary + 2 mirrors) across 3 × 2TB disks
 
 ## Quick Start
 

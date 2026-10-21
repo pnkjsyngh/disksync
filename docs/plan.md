@@ -1,234 +1,169 @@
-# RAID-Like Storage System - Complete Development Plan
+# disksync - Development Plan
 
 ## Project Overview
 
-A single-user web-based application to manage and synchronize data across 3 external hard disks using RAID 1 (mirroring), with future expansion for 2 family members. Deployable on Raspberry Pi over local home WiFi network.
+A self-hosted web application that keeps 3 external hard disks mirrored for redundancy, with family sharing for 2 users and phone photo backup. Runs on a dedicated, always-on mini PC on the home network.
 
 -----
 
 ## Core Problem
 
-You have 3 × 2TB portable external hard disks that need to be synced in a RAID-like manner for data redundancy and resilience.
+3 × 2TB portable external hard disks hold roughly the same data, copied by hand over time, and have drifted apart. They need to be reconciled once, then kept identical automatically, while each disk stays independently readable on Linux and Windows.
+
+-----
+
+## Decisions Log
+
+| Topic | Decision | Notes |
+|---|---|---|
+| Host | Dedicated, always-on NUC-style mini PC (i3/i5/i7) | Replaces Raspberry Pi |
+| OS | Ubuntu Server LTS | disksync runs as a systemd service |
+| Disk connection | Powered USB hub | USB dropouts must be tolerated |
+| Mirroring | App-level sync (not mdadm/btrfs) | mdadm rejected: full 2TB resync on every USB dropout, and disks unusable standalone |
+| Source of truth | One primary disk; other two are mirrors | No multi-master conflict resolution |
+| Write path | Write to primary, background copy to mirrors | Brief single-copy window is accepted |
+| Sync timing | On change (inotify on primary) + hourly full sweep | Sweep catches missed events and reconnected disks |
+| Failover | Auto-promote most up-to-date mirror; dashboard warning | Until user acknowledges |
+| Filesystem | Keep current formats, no reformat | Must stay readable on Linux + Windows; check with `lsblk -f` |
+| Direct edits | Allowed on other machines; on reconnect show diff vs primary, user approves | Pull into primary or overwrite |
+| Deletes | Move to `.disksync-trash/` on mirrors, purge after retention (default 30 days) | |
+| Integrity | Hash every file on copy + monthly scrub of all disks | Hash algorithm: BLAKE2b or xxHash (fast) |
+| Existing data | Must be preserved; disks are drifted copies | First sync = union of all 3, conflicts flagged for review, nothing deleted |
+| Disk identity | Filesystem UUID, not mount point / device name | `/dev/sdX` changes across USB reconnects |
+| Phone backup | Immich (free/OSS), Docker, iPhone app | disksync mirrors Immich's library folder; Immich DB backed up too |
+| Users | 2 users, `/user1/`, `/user2/`, `/shared/` | |
+| Remote access | LAN only for now | Tailscale is the likely option later |
+| Alerts | Dashboard only | No email/push for now |
+| Frontend | Streamlit now, custom HTML/JS later | Migration kept as a later phase |
+| Persistence | JSON for config; SQLite for file index/hashes/sync state | Index of 3 × 2TB of files is too large for JSON |
 
 -----
 
 ## Technical Stack
 
-### Backend
-
-**Language/Framework**: Python + FastAPI
-
-- Lightweight, Raspberry Pi-friendly
-- Strong file/disk management capabilities
-
-### Frontend
-
-**MVP**: Streamlit
-**Production**: Lightweight custom HTML/JS (Raspberry Pi optimization)
-
-- Rapid initial development with Streamlit
-- Migrate to custom UI for resource efficiency on Pi
-
-### Storage Model
-
-**RAID Type**: RAID 1 (Mirroring)
-
-- Data replicated identically across all 3 disks
-- Tolerates 1-2 disk failures
-- Usable storage: 2TB (limited by smallest disk)
-
-### Data Persistence
-
-**Initial**: JSON files (config and state)
-**Future Path**: SQLite migration with abstracted data layer
-
-- Simple, no database complexity initially
-- Abstracted data layer enables future migration without major refactoring
-
-### Operating Systems
-
-**Development OS**: Linux
-**Deployment OS**: Linux (Raspberry Pi OS)
+- **Backend**: Python + FastAPI
+- **Frontend**: Streamlit (MVP) → custom HTML/JS (later phase)
+- **Sync**: Python sync engine (rsync-style copy + hash verify), `watchdog`/inotify on primary
+- **Disk info**: `lsblk --json --bytes`, `shutil.disk_usage`, `smartctl` (smartmontools) for health
+- **State**: `config/config.json` + SQLite (`data/disksync.db`)
+- **Phone backup**: Immich in Docker Compose
+- **Service**: systemd units for backend + frontend
 
 -----
 
-## Features - Phased Approach
+## Milestones
 
-### Phase 1: MVP - Single User Core (Weeks 1-4)
+### M1: Real Disk Status + First-Sync Dry Run (next)
 
-- [ ] Detect and monitor 3 external disks
-- [ ] Display disk status (capacity, usage, health)
-- [ ] Simple file upload/download interface
-- [ ] Basic sync operation (one-way or two-way)
-- [ ] Sync logs and status dashboard
-- [ ] Configuration file for disk mapping
+Read-only. Nothing is written to the disks.
 
-### Phase 2: Family Sharing (Weeks 5-8)
+- [ ] Fix `lsblk` parsing (`--bytes`, partitions/children, all mountpoints)
+- [ ] Real used/free via `shutil.disk_usage`
+- [ ] SMART health via `smartctl -H` (graceful fallback when USB bridge blocks SMART)
+- [ ] Identify disks by filesystem UUID in config; report filesystem type
+- [ ] Config: mark primary disk; reload without restart
+- [ ] Scanner: walk each disk, record path/size/mtime/hash into SQLite
+- [ ] 3-way diff report: identical / missing on some disks / same path, different content
+- [ ] Dashboard: disk status + diff report view
+- [ ] CI: pytest workflow on PRs; fix cwd-dependent test
 
-- [ ] Add 2-user authentication (you + 1 family member)
-- [ ] User folder structure: `/user1/`, `/user2/`, `/shared/`
-- [ ] Multi-user upload capability
-- [ ] All uploads auto-sync across all 3 disks
-- [ ] User session management
-- [ ] Basic access control (own folder + shared folder)
+### M2: Initial Reconcile
 
-### Phase 3: Optimization & Deployment (Weeks 9+)
+- [ ] Review UI for conflicts (pick version per file; keep both as option)
+- [ ] Union merge onto primary, with hash verification
+- [ ] Mirror primary → secondaries; verify by hash
+- [ ] Sync log (file + dashboard view)
 
-- [ ] Incremental sync (only changed files)
-- [ ] File integrity verification (checksums/hashing)
-- [ ] Disk health monitoring and alerts
-- [ ] Migrate frontend to lightweight custom UI
-- [ ] Raspberry Pi optimization and testing
-- [ ] Optional: compression support
-- [ ] Optional: encryption support
-- [ ] Sync history and audit logs
+### M3: Continuous Mirroring
+
+- [ ] inotify watcher on primary + hourly sweep
+- [ ] Copy queue with retry; tolerate disk disconnects mid-copy (temp file + atomic rename)
+- [ ] `.disksync-trash/` with retention purge
+- [ ] Direct-edit detection on reconnect → diff → approve
+- [ ] Failover: auto-promote most up-to-date mirror, dashboard alert
+- [ ] Monthly scrub job; report and repair mismatches from good copies
+- [ ] Dashboard alerts: disk missing, SMART warning, sync failure, >90% full
+- [ ] systemd services, auto-mount by UUID (fstab with `nofail`)
+
+### M4: Family Sharing + Immich
+
+- [ ] Auth for 2 users (hashed passwords, session cookies)
+- [ ] `/user1/`, `/user2/`, `/shared/` folders with access control
+- [ ] Upload/download through web UI (writes to primary)
+- [ ] Immich via Docker Compose; library on primary disk; iPhone app setup
+- [ ] Include Immich Postgres dumps in mirrored data
+
+### M5: Custom UI + Hardening
+
+- [ ] Migrate frontend from Streamlit to custom HTML/JS
+- [ ] Sync history and audit log
+- [ ] Optional: encryption at rest, compression
+- [ ] Optional: remote access via Tailscale
+- [ ] Optional: email/push alerts
 
 -----
 
-## Key Design Decisions
+## Key Design Details
 
-### 1. Disk Mapping Strategy
+### Disk Mapping
 
-**Approach**: Configuration-driven (Option 1)
-
-- Mount points stored in `config.json`
-- Example:
+Configuration-driven, by filesystem UUID:
 
 ```json
 {
-"disk_1": "/mnt/disk1",
-"disk_2": "/mnt/disk2",
-"disk_3": "/mnt/disk3"
+  "mock": false,
+  "primary": "1",
+  "disks": {
+    "1": {"uuid": "XXXX-XXXX", "mount": "/mnt/disk1"},
+    "2": {"uuid": "YYYY-YYYY", "mount": "/mnt/disk2"},
+    "3": {"uuid": "ZZZZ-ZZZZ", "mount": "/mnt/disk3"}
+  },
+  "trash_retention_days": 30
 }
 ```
-- Swap disks by updating config file only, no code changes required
-- Future-proof and hardware-agnostic
 
-### 2. Storage Quotas
+Swapping a disk means updating config only.
 
-**Approach**: No artificial limits
+### Sync Model
 
-- Physical disk space is the only constraint
-- Alert when approaching full (e.g., 90% capacity)
-- First come, first served for all users
+```
+          writes (web UI, Immich, Samba later)
+                        │
+                        ▼
+                 ┌─────────────┐
+                 │  Primary    │  ← source of truth
+                 └──────┬──────┘
+        inotify + hourly sweep, hash-verified copy
+              ┌─────────┴─────────┐
+              ▼                   ▼
+        ┌──────────┐        ┌──────────┐
+        │ Mirror A │        │ Mirror B │
+        └──────────┘        └──────────┘
+```
 
-### 3. Network Access
+- A disk that reconnects after a dropout catches up incrementally from the index.
+- Changes found on a mirror that didn't come from primary are treated as direct edits → user review.
 
-**Scope**: Local WiFi only (home network)
+### Storage Quotas
 
-- No internet exposure
-- Simple security model
-- Family accesses via browser on same network
-- Access URL: `http://<raspberry_pi_ip>:8000`
+No artificial limits. Alert at 90% full.
 
-### 4. Authentication
+### Network Access
 
-**Approach**: Basic username/password for 2 users
-
-- Simple credential storage (encrypted JSON or environment variables initially)
-- No complex permission system
-- User-based folder separation
+LAN only. Backend on `:8000`, Streamlit on `:8501`. Frontend backend URL must be configurable (not hard-coded to `127.0.0.1`). Tighten CORS to the frontend origin.
 
 -----
 
-## Hardware Requirements
+## Hardware
 
-### What You Have
-
+- ✓ Mini PC (NUC-style, Intel i3/i5/i7), Ubuntu Server LTS
 - ✓ 3 × 2TB portable external hard disks
-- Total usable storage: 2TB (RAID 1 mirroring)
-
-### What You Need to Acquire
-
-|Item |Cost |Notes |
-|-------------------------|-------------|------------------------------|
-|Raspberry Pi 4 (8GB RAM) |~$75 |Required for performance |
-|Powered USB Hub |~$25-30 |Important for powering 3 disks|
-|Power Supply for Pi |~$15-20 |5V 3A minimum, quality matters|
-|SD Card (64GB+) |~$10-15 |Class A1 or better recommended|
-|**Total Additional Cost**|**~$120-140**|One-time investment |
-
-### Optional but Recommended
-
-- Ethernet cable (more stable than WiFi)
-- Pi case with heatsinks (good for sustained I/O)
+- Powered USB 3 hub (good quality; USB dropouts are the main hardware risk)
+- Optional: UPS for clean shutdowns
 
 -----
 
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Home WiFi Network                                           │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   Family Member 1 (Phone/Computer)                          │
-│   Family Member 2 (Phone/Computer)                          │
-│         │                                                   │
-│         └─────────────────┬──────────────────────────       │
-│                           │                                 │
-│                   ┌───────▼────────┐                        │
-│                   │ Raspberry Pi   │                        │
-│                   │ ┌─────────────┐│                        │
-│                   │ │ FastAPI     ││                        │
-│                   │ │ Backend     ││                        │
-│                   │ └─────────────┘│                        │
-│                   │ ┌─────────────┐│                        │
-│                   │ │ Streamlit   ││                        │
-│                   │ │ Web UI      ││                        │
-│                   │ └─────────────┘│                        │
-│                   └────────┬───────┘                        │
-│                            │                                │
-│              ┌─────────────┼────────────┐                   │
-│              │             │            │                   │
-│         ┌───────▼──┐ ┌──────▼──┐ ┌────▼──────┐             │
-│         │ Disk 1   │ │ Disk 2  │ │ Disk 3    │             │
-│         │ 2TB      │ │ 2TB     │ │ 2TB       │             │
-│         │ (copy)   │ │ (copy)  │ │ (copy)    │             │
-│         └──────────┘ └─────────┘ └───────────┘             │
-│                                                             │
-│   RAID 1 Mirroring: Identical Data on All 3 Disks           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
------
-
-## Development Workflow
-
-### Initial Setup
-
-1. Set up development environment on Linux machine
-2. Create project structure and version control
-3. Configure disk mounting and detection
-
-### MVP Development
-
-1. Implement disk monitoring and health status
-2. Build file upload/download endpoints
-3. Implement basic RAID 1 sync logic
-4. Create Streamlit UI for monitoring and operations
-5. Add configuration file management
-6. Comprehensive testing with actual 3 disks
-
-### Family Sharing Addition
-
-1. Implement user authentication system
-2. Add user folder separation
-3. Extend upload/download for multi-user
-4. Test concurrent access and uploads
-
-### Production Deployment
-
-1. Migrate to lightweight custom UI (if needed)
-2. Optimize for Raspberry Pi resources
-3. Set up Raspberry Pi OS and environment
-4. Deploy application and test end-to-end
-5. Document setup and troubleshooting
-
------
-
-## File Structure (Proposed)
+## File Structure (Target)
 
 ```
 disksync/
@@ -236,73 +171,50 @@ disksync/
 │   ├── main.py
 │   ├── config.py
 │   ├── disk_manager.py
-│   ├── sync_engine.py
-│   ├── auth.py
-│   └── utils.py
+│   ├── scanner.py        # walk + hash + index
+│   ├── sync_engine.py    # primary → mirrors
+│   ├── db.py             # SQLite access layer
+│   └── auth.py
 ├── frontend/
-│   ├── streamlit_app.py
-│   └── pages/
-├── config/
-│   ├── config.json
-│   └── credentials.json
-├── logs/
-│   └── sync.log
+│   └── app.py
+├── config/config.json
+├── data/disksync.db
+├── deploy/               # systemd units, docker-compose for Immich
+├── logs/sync.log
 ├── tests/
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
 -----
 
 ## Success Metrics
 
-- [ ] All 3 disks successfully synced with identical data
-- [ ] Web UI accessible from family devices over WiFi
-- [ ] Sync completes without errors
-- [ ] Disk status accurately reported
-- [ ] Authentication works for 2 users
+- [ ] All 3 disks hold identical data, verified by hash
+- [ ] Existing data reconciled with no losses
+- [ ] Disk status (usage, SMART, presence) accurately reported
+- [ ] USB dropout recovers with incremental catch-up, no full resync
+- [ ] iPhone photos back up automatically via Immich
+- [ ] 2 users can log in with folder separation
 - [ ] Disk swap possible with only config changes
-- [ ] Raspberry Pi deployment stable under normal use
-
------
-
-## Future Considerations
-
-- **Encryption**: Encrypt data at rest on disks
-- **Compression**: Optional compression for storage efficiency
-- **Incremental Sync**: Only sync changed files instead of full copies
-- **Backup**: External backup of critical data
-- **Monitoring**: Email alerts for disk health issues
-- **Mobile App**: Dedicated mobile app instead of web UI
-- **Cloud Integration**: Optional cloud backup layer
-
------
-
-## Timeline Estimate
-
-- **Phase 1 (MVP)**: 3-4 weeks
-- **Phase 2 (Family Sharing)**: 2-3 weeks
-- **Phase 3 (Optimization & Deployment)**: 2-3 weeks
-- **Total**: 7-10 weeks of active development
 
 -----
 
 ## Risk Mitigation
 
-|Risk                           |Impact         |Mitigation                          |
-|-------------------------------|---------------|------------------------------------|
-|Disk failure during sync       |Data loss      |RAID 1 redundancy, checksums        |
-|Concurrent upload conflicts    |Data corruption|Lock mechanism, timestamp resolution|
-|Raspberry Pi performance issues|Slow syncing   |Lightweight UI, incremental sync    |
-|USB power issues               |Disconnects    |Powered USB hub                     |
-|Configuration errors           |System failure |Validation, backups of config       |
+| Risk | Impact | Mitigation |
+|---|---|---|
+| USB hub dropout | Disk disappears mid-sync | UUID identity, temp file + atomic rename, incremental catch-up |
+| Data loss in first reconcile | Permanent loss | Read-only dry run first; union merge; nothing deleted |
+| Primary disk failure | Writes interrupted | Auto-promote most current mirror |
+| Silent corruption | Bad data mirrored | Hash on copy, monthly scrub, repair from good copy |
+| Mirror drift via direct edits | Inconsistency | Detect on reconnect, user approves |
+| exFAT/NTFS limits on Linux | Permissions, case, journaling quirks | Keep current formats; avoid relying on Unix permissions on disks |
+| SMART blocked by USB bridge | No health data | Fallback to `smartctl -d sat`; show "unknown" otherwise |
 
 -----
 
-## Notes
+## Open Items
 
-- Start development on Linux machine with actual 3 disks to test real-world scenarios
-- Keep code simple initially; optimize later based on actual usage patterns
-- Document all setup and deployment steps for reproducibility
-- Consider adding monitoring/alerting as system matures
-- Plan for eventual hardware upgrades (larger disks, more powerful Pi)
+- Record each disk's current filesystem and UUID (`lsblk -f`) on the mini PC
+- Choose which disk is initially primary (likely the most complete after the M1 diff)
+- Decide trash retention period (default 30 days)
