@@ -34,12 +34,18 @@ def is_ignored(name: str, rel: str, patterns: list[str]) -> bool:
     return False
 
 
+# Always skipped, whatever the config says: leftovers from an interrupted
+# copy must never be indexed or mirrored as if they were user files.
+ALWAYS_IGNORE = [".disksync-tmp-*", ".disksync-trash"]
+
+
 def walk(root: str | Path, ignore: list[str], errors: list[str]) -> Iterator[tuple[str, int, float]]:
     """Yield (relative_path, size, mtime) for every regular file under root.
 
     Symlinks are not followed; ignored names are pruned at any depth.
     """
     root = str(root)
+    ignore = [*ALWAYS_IGNORE, *ignore]
     stack = [root]
     while stack:
         current = stack.pop()
