@@ -232,8 +232,19 @@ SMART: works on disk 1 (Toshiba, healthy) via the `deploy/disksync-smart` sudo h
 - Disks were previously mirrored with FreeFileSync (`sync.ffs_db`) and used on macOS
 - Not scanned (ignored): `.Trashes` holds ~236 GB on each disk (macOS trash never emptied) and `$RECYCLE.BIN` ~52 GB on disk 1. This accounts for the gap between `df` usage and the scanned size.
 
+### Trash folders (decision 2026-10-22: leave untouched)
+
+| Location | Contents | Size |
+|---|---|---|
+| `.Trashes/502` on all 3 disks (identical) | macOS trash never emptied, mostly `Lauren/` video projects 2015-2018, some music | 1,392 files, 235 GB |
+| `$RECYCLE.BIN` on disk 1 | Windows deletions Nov-Dec 2023: `Playwork`, `Ithaca Farmers`, `Lab of O`, 2 `.wav`, 2 photos | 657 files, 51 GB |
+
+- ~181 GB of the macOS trash matches live files by name + size (not hash-verified).
+- **~55 GB exists only in trash**: `Lauren/Playwork` (32.5 GB), `Lauren/Ithaca Farmers` (17 GB), `Boedicker Elders.mp4`, `1945(2).tif`, `Lab of O`, music. These are the only copies of those projects.
+- Decision: leave all trash folders as they are. They stay on the scanner ignore list, so sync never copies, mirrors or deletes them. Nobody (agent or code) empties them. Revisit only to rescue the unique files.
+
 ## Open Items
 
-- Decide what to do with ~236 GB macOS `.Trashes` per disk and 52 GB `$RECYCLE.BIN` on disk 1 (review, recover or empty)
-- Primary: disk 2 (most complete, NTFS/journaled); confirm
+- Primary: disk 2 (most complete, NTFS/journaled; holds everything disks 1 and 3 have)
+- Later, optional: rescue the ~55 GB of trash-only files into a live folder (needs a decision on whether they were deleted on purpose)
 - Decide trash retention period (default 30 days)
