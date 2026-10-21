@@ -66,11 +66,23 @@ class Plan:
         return h.hexdigest()[:12]
 
 
-def build_plan(conn, config: Config) -> Plan:
+def build_plan(conn, config: Config, disks: set[str] | None = None) -> Plan:
+    """Plan copies among the scanned disks, or only among `disks` if given.
+
+    Disks outside `disks` are neither read from nor written to, e.g. to keep
+    syncing the healthy disks while one is out for repair.
+    """
     scanned = [r["disk_id"] for r in conn.execute("SELECT disk_id FROM scans WHERE finished_at IS NOT NULL")]
+    if disks is not None:
+        scanned = [d for d in scanned if d in disks]
     ops: list[CopyOp] = []
     skipped: dict[str, list[str]] = {}
     for group in load_groups(conn).values():
+        if disks is not None:
+            group.copies = {d: r for d, r in group.copies.items() if d in disks}
+            group.collisions = {d: c for d, c in group.collisions.items() if d in disks}
+            if not group.copies:
+                continue
         missing = [d for d in scanned if d not in group.copies]
         if not missing:
             continue
@@ -252,6 +264,15 @@ def _log(config: Config, entry: dict[str, Any]) -> None:
         os.fsync(f.fileno())
 
 
+def _check_still_mounted(config: Config, devices: dict[str, int]) -> None:
+    for disk_id, dev in devices.items():
+        mount = config.disks[disk_id].mount
+        if config.disks[disk_id].uuid and not os.path.ismount(mount):
+            raise SyncError(f"disk {disk_id} is no longer mounted at {mount}")
+        if os.stat(mount).st_dev != dev:
+            raise SyncError(f"disk {disk_id} was disconnected and remounted during the run")
+
+
 def apply_plan(
     config: Config,
     plan: Plan,
@@ -263,16 +284,22 @@ def apply_plan(
     if problems:
         raise SyncError("; ".join(problems))
 
+    involved = {o.src_disk for o in plan.ops} | {o.dst_disk for o in plan.ops}
+    # A USB disk that drops out and comes back gets remounted, possibly as a
+    # new device; the device id of its mount root changing reveals that.
+    devices = {d: os.stat(config.disks[d].mount).st_dev for d in involved}
+
     conn = db.connect(config.db_path)
     done = 0
     try:
         for i, op in enumerate(plan.ops):
             if progress:
                 progress(i, len(plan.ops), op)
-            src = Path(config.disks[op.src_disk].mount) / op.path
-            dst = resolve_dest(Path(config.disks[op.dst_disk].mount), op.path)
             base = {"src_disk": op.src_disk, "dst_disk": op.dst_disk, "path": op.path, "size": op.size}
             try:
+                _check_still_mounted(config, devices)
+                src = Path(config.disks[op.src_disk].mount) / op.path
+                dst = resolve_dest(Path(config.disks[op.dst_disk].mount), op.path)
                 digest = copy_verified(src, dst, op.size, op.mtime)
             except (OSError, SyncError) as e:
                 _log(config, {**base, "result": "error", "error": str(e)})
@@ -317,24 +344,30 @@ def main() -> None:
     parser.add_argument("--apply", action="store_true", help="actually copy files")
     parser.add_argument("--plan-id", help="plan id from the dry run; required with --apply")
     parser.add_argument("--no-scan", action="store_true", help="use the existing index instead of rescanning")
+    parser.add_argument("--disks", nargs="+", help="only sync among these disk ids (others are not touched)")
     args = parser.parse_args()
     if args.apply and not args.plan_id:
         parser.error("--apply requires --plan-id from a dry run")
 
     config = Config()
-    disk_ids = set(config.disks)
+    disk_ids = set(args.disks or config.disks)
+    unknown = disk_ids - set(config.disks)
+    if unknown:
+        parser.error(f"unknown disk id(s): {', '.join(sorted(unknown))}")
+    if len(disk_ids) < 2:
+        parser.error("need at least two disks to sync")
     problems = check_disks(config, disk_ids)
     if problems:
         raise SystemExit("Refusing to continue:\n  " + "\n  ".join(problems))
 
     if not args.no_scan:
         print("Rescanning disks (read-only)...")
-        for r in scan_all(config):
+        for r in scan_all(config, sorted(disk_ids)):
             if r["errors"]:
                 raise SystemExit(f"Scan of disk {r['disk_id']} had {len(r['errors'])} errors; resolve before syncing.")
 
     conn = db.connect(config.db_path)
-    plan = build_plan(conn, config)
+    plan = build_plan(conn, config, disk_ids if args.disks else None)
     conn.close()
 
     gb = 1024**3
@@ -364,7 +397,11 @@ def main() -> None:
     print(f"Full plan: {write_plan_file(config, plan)}")
 
     if not args.apply:
-        print(f"\nDry run only; nothing was written to the disks.\nTo apply: python -m backend.sync_engine --apply --plan-id {plan.plan_id}")
+        disks_arg = f" --disks {' '.join(sorted(disk_ids))}" if args.disks else ""
+        print(
+            "\nDry run only; nothing was written to the disks.\n"
+            f"To apply: python -m backend.sync_engine{disks_arg} --apply --plan-id {plan.plan_id}"
+        )
         return
     if args.plan_id != plan.plan_id:
         raise SystemExit(f"Plan id {args.plan_id} does not match the current plan {plan.plan_id}; re-run the dry run and review it.")

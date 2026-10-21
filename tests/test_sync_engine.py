@@ -169,3 +169,54 @@ def test_plan_id_changes_when_plan_changes(tmp_path: Path) -> None:
 def test_scanner_ignores_leftover_temp_files(tmp_path: Path) -> None:
     config = make_disks(tmp_path, {"1": {}, "2": {".disksync-tmp-abcd-x.jpg": b"partial"}})
     assert plan_for(config).ops == []
+
+
+def test_plan_limited_to_selected_disks(tmp_path: Path) -> None:
+    config = make_disks(
+        tmp_path,
+        {"1": {"only1.txt": b"1"}, "2": {"new.jpg": b"n"}, "3": {}},
+    )
+    scan_all(config)
+    conn = db.connect(config.db_path)
+    plan = build_plan(conn, config, {"2", "3"})
+    conn.close()
+    # Disk 1 is neither a source nor a destination.
+    assert [(o.src_disk, o.dst_disk, o.path) for o in plan.ops] == [("2", "3", "new.jpg")]
+
+
+def test_apply_stops_and_logs_when_destination_unreadable(tmp_path: Path, monkeypatch) -> None:
+    config = make_disks(tmp_path, {"1": {}, "2": {"a/x.txt": b"x"}})
+    plan = plan_for(config)
+
+    def broken(root, rel):
+        raise OSError(5, "Input/output error", str(root))
+
+    monkeypatch.setattr(sync_engine, "resolve_dest", broken)
+    with pytest.raises(SyncError, match="Input/output error"):
+        apply_plan(config, plan)
+    log = [json.loads(line) for line in (tmp_path / "data" / "sync-log.jsonl").read_text().splitlines()]
+    assert log[-1]["result"] == "error"
+
+
+def test_apply_stops_when_disk_remounted_mid_run(tmp_path: Path, monkeypatch) -> None:
+    config = make_disks(tmp_path, {"1": {}, "2": {"a.txt": b"a", "b.txt": b"b"}})
+    plan = plan_for(config)
+    real_copy = sync_engine.copy_verified
+    real_stat = os.stat
+    calls = {"n": 0}
+
+    def copy_then_unplug(*args):
+        calls["n"] += 1
+        return real_copy(*args)
+
+    def fake_stat(path, *a, **k):
+        st = real_stat(path, *a, **k)
+        if calls["n"] >= 1 and str(path) == str(tmp_path / "disk1"):
+            return os.stat_result((st.st_mode, st.st_ino, st.st_dev + 1, *tuple(st)[3:]))
+        return st
+
+    monkeypatch.setattr(sync_engine, "copy_verified", copy_then_unplug)
+    monkeypatch.setattr(sync_engine.os, "stat", fake_stat)
+    with pytest.raises(SyncError, match="remounted"):
+        apply_plan(config, plan)
+    assert calls["n"] == 1
