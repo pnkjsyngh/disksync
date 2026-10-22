@@ -77,10 +77,16 @@ Read-only. Nothing is written to the disks.
 - [ ] Sync log: append-only file done (`data/sync-log.jsonl`); dashboard view pending
 - [ ] Restore original mtime when a copy's final `utime` was lost (49 files on disk 1 after the incident below)
 
-### M3: Continuous Mirroring
+### M3: Continuous Mirroring (in progress)
 
-- [ ] inotify watcher on primary + hourly sweep
-- [ ] Copy queue with retry; tolerate disk disconnects mid-copy (temp file + atomic rename)
+Decisions (2026-10-22): copy **new** files from the primary automatically; files changed on the primary and files missing from the primary (deleted/renamed) are only reported for review; keep desktop auto-mount for now (fstab later).
+
+- [x] `backend/mirror.py`: inotify watcher on primary (debounced) + hourly sweep; off until `mirror.auto_copy_new` is set
+- [x] New files copied only after `settle_s` (5 min) without changes; never writes to the primary
+- [x] Review lists: missing on primary, changed, conflicts (`data/mirror-status.json`, dashboard Mirror tab)
+- [x] Any copy/scan error pauses copying until `--resume`; source still changing just retries next sweep; missing disks are skipped
+- [x] systemd user service (`deploy/disksync-mirror.service`)
+- [ ] Approve changed files from the dashboard (old version to `.disksync-trash`)
 - [ ] `.disksync-trash/` with retention purge
 - [ ] Direct-edit detection on reconnect → diff → approve
 - [ ] Failover: auto-promote most up-to-date mirror, dashboard alert

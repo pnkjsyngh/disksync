@@ -69,3 +69,10 @@ class Config:
     @property
     def mtime_tolerance_s(self) -> float:
         return float(self._data.get("mtime_tolerance_s", 2))
+
+    @property
+    def mirror(self) -> dict[str, Any]:
+        # Background mirroring (backend.mirror). Copying stays off until the
+        # user sets auto_copy_new; until then every sweep is a dry run.
+        defaults = {"auto_copy_new": False, "sweep_interval_min": 60, "settle_s": 300, "debounce_s": 60}
+        return {**defaults, **self._data.get("mirror", {})}
