@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/pnkjsyngh/disksync/compare/v1.1.0...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* M3 background mirror of new primary files, off by default ([fc15979](https://github.com/pnkjsyngh/disksync/commit/fc15979c5a6393ffaad37ca56302906fcaedd4c1))
+
 ## [1.1.0](https://github.com/pnkjsyngh/disksync/compare/v1.0.0...v1.1.0) (2026-10-21)
 
 
