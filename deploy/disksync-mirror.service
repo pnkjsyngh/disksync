@@ -1,0 +1,22 @@
+# systemd *user* service for the background mirror (backend.mirror).
+# Install (as the desktop user, no sudo):
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/disksync-mirror.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now disksync-mirror
+# Logs: journalctl --user -u disksync-mirror -f
+# The disks are mounted by the desktop session, so the service only finds
+# them while that user is logged in; until then it waits.
+[Unit]
+Description=disksync background mirror
+
+[Service]
+WorkingDirectory=%h/dev/disksync
+ExecStart=%h/dev/disksync/.venv/bin/python -m backend.mirror
+Restart=on-failure
+RestartSec=60
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

@@ -27,7 +27,7 @@ except Exception as e:
 
 st.button("Refresh")
 
-tab_disks, tab_report = st.tabs(["Disks", "Diff report"])
+tab_disks, tab_mirror, tab_report = st.tabs(["Disks", "Mirror", "Diff report"])
 
 with tab_disks:
     st.subheader(f"Disk Status ({len(disks)} disk(s) configured)")
@@ -53,6 +53,46 @@ with tab_disks:
                 text=f"{disk['used_gb']:.0f} GB / {disk['total_gb']:.0f} GB used ({disk['free_gb']:.0f} GB free)",
             )
             st.caption(f"{disk.get('device')} · {disk.get('model')} · serial {disk.get('serial')} · UUID {disk.get('uuid')}")
+
+with tab_mirror:
+    try:
+        m = fetch("/mirror")
+    except Exception as e:
+        st.error(f"Could not load mirror status: {e}")
+        m = None
+    if m:
+        status = m["status"]
+        if m["paused"]:
+            st.error(f"Copying is PAUSED: {m['paused']}. Check the cause, then run `python -m backend.mirror --resume`.")
+        if not m["settings"]["auto_copy_new"]:
+            st.info("Automatic copying is off (dry run only). Set mirror.auto_copy_new in config/config.json to enable it.")
+        if not status:
+            st.info("No sweep yet. Start the service or run `python -m backend.mirror --once`.")
+        else:
+            when = datetime.fromtimestamp(status["time"]).strftime("%Y-%m-%d %H:%M")
+            cols = st.columns(4)
+            cols[0].metric("Last sweep", when)
+            cols[1].metric("Result", status["result"])
+            cols[2].metric("New files", status.get("new_files", 0))
+            cols[3].metric("Copied", status.get("copied", 0))
+            if status.get("message"):
+                st.caption(status["message"])
+            for disk_id, problems in status.get("unavailable_disks", {}).items():
+                st.warning(f"Disk {disk_id} skipped: {'; '.join(problems)}")
+            if status.get("to_copy") and status["result"] != "copied":
+                with st.expander(f"Waiting to be copied: {status['new_files']} file(s)"):
+                    st.dataframe(status["to_copy"], use_container_width=True)
+            if status.get("settling_count"):
+                with st.expander(f"Recently modified, copied once quiet: {status['settling_count']}"):
+                    st.write(status["settling"])
+            labels = {
+                "missing_on_primary": "Missing on the primary (deleted or renamed there?) - kept on the other disks",
+                "changed": "Different between disks (changed on the primary?) - not updated automatically",
+            }
+            for key, count in status.get("review_counts", {}).items():
+                if count:
+                    with st.expander(f"Needs review - {labels.get(key, key)}: {count}"):
+                        st.write(status["review"][key])
 
 with tab_report:
     try:

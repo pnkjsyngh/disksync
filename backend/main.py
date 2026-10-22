@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import asdict
 
@@ -9,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import db
 from .config import Config
 from .disk_manager import get_disks
+from .mirror import paused_reason, status_path
 from .report import build_report
 
 app = FastAPI(title="disksync")
@@ -44,3 +46,11 @@ async def report():
     result["detail_total"] = {k: len(v) for k, v in result["detail"].items()}
     result["detail"] = {k: v[:DETAIL_LIMIT] for k, v in result["detail"].items()}
     return result
+
+
+@app.get("/mirror")
+async def mirror_status():
+    _config.reload()
+    path = status_path(_config)
+    status = json.loads(path.read_text()) if path.exists() else None
+    return {"status": status, "paused": paused_reason(_config), "settings": _config.mirror}

@@ -23,6 +23,13 @@ stop and ask the user.
   expand to one.
 - Running disksync code that writes to the disks requires the user's
   approval of that run, after they have seen its dry-run output.
+- Only exception: the background mirror (`backend/mirror.py`), once the
+  user has turned on `mirror.auto_copy_new` in `config/config.json`, may
+  copy files that are new on the primary to the other disks without
+  per-run approval. It never writes to the primary, never overwrites,
+  never deletes, and pauses itself on any error. Agents must not turn
+  `auto_copy_new` on, resume a paused mirror, or widen what it does
+  automatically without the user's explicit approval.
 - Tests must only use temporary directories, never the real disks or
   `config/config.json`.
 

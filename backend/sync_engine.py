@@ -41,6 +41,10 @@ class SyncError(Exception):
     """A pre-flight check or copy failed; nothing further is attempted."""
 
 
+class SourceChanged(SyncError):
+    """The source file changed or vanished after the scan (e.g. still being written)."""
+
+
 @dataclass
 class CopyOp:
     src_disk: str
@@ -214,9 +218,12 @@ def _hash_from_disk(path: Path) -> str:
 
 def copy_verified(src: Path, dst: Path, expected_size: int, expected_mtime: float) -> str:
     """Copy src to dst via a temp file, verify by hash, return the hash."""
-    st = src.stat()
+    try:
+        st = src.stat()
+    except FileNotFoundError as e:
+        raise SourceChanged(f"source changed since scan (gone): {src}") from e
     if st.st_size != expected_size or st.st_mtime != expected_mtime:
-        raise SyncError(f"source changed since scan: {src}")
+        raise SourceChanged(f"source changed since scan: {src}")
     if _exists_ignoring_case(dst):
         raise SyncError(f"destination already exists, not overwriting: {dst}")
 
