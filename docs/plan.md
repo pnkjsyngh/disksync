@@ -53,7 +53,7 @@ A self-hosted web application that keeps 3 external hard disks mirrored for redu
 
 ## Milestones
 
-### M1: Real Disk Status + First-Sync Dry Run (next)
+### M1: Real Disk Status + First-Sync Dry Run (done)
 
 Read-only. Nothing is written to the disks.
 
@@ -67,12 +67,15 @@ Read-only. Nothing is written to the disks.
 - [x] Dashboard: disk status + diff report view
 - [x] CI: pytest workflow on PRs; fix cwd-dependent test
 
-### M2: Initial Reconcile
+### M2: Initial Reconcile (in progress)
 
-- [ ] Review UI for conflicts (pick version per file; keep both as option)
-- [ ] Union merge onto primary, with hash verification
-- [ ] Mirror primary → secondaries; verify by hash
-- [ ] Sync log (file + dashboard view)
+- [x] Sync engine: dry-run by default, `--apply --plan-id` required, copy-only, temp file + hash verify + no-overwrite rename, stop on first error
+- [x] Union merge onto primary, with hash verification (engine supports it; not needed for the first sync, primary already had everything)
+- [x] Mirror primary → secondaries; verify by hash
+- [x] Stop cleanly on I/O error or disk remount mid-run; `--disks` to limit a run
+- [ ] Review UI for conflicts (pick version per file; keep both as option) — no conflicts on the current disks
+- [ ] Sync log: append-only file done (`data/sync-log.jsonl`); dashboard view pending
+- [ ] Restore original mtime when a copy's final `utime` was lost (49 files on disk 1 after the incident below)
 
 ### M3: Continuous Mirroring
 
@@ -242,6 +245,15 @@ SMART: works on disk 1 (Toshiba, healthy) via the `deploy/disksync-smart` sudo h
 - ~181 GB of the macOS trash matches live files by name + size (not hash-verified).
 - **~55 GB exists only in trash**: `Lauren/Playwork` (32.5 GB), `Lauren/Ithaca Farmers` (17 GB), `Boedicker Elders.mp4`, `1945(2).tif`, `Lab of O`, music. These are the only copies of those projects.
 - Decision: leave all trash folders as they are. They stay on the scanner ignore list, so sync never copies, mirrors or deletes them. Nobody (agent or code) empties them. Revisit only to rescue the unique files.
+
+### First sync (2026-10-22)
+
+- Plan `fdeea3a5b749` (590 files to disks 1 and 3) stopped after 160 verified copies: disk 1 (Toshiba) dropped off the USB hub mid-run with I/O errors.
+- Recovery, all read-only first: Toshiba moved to a direct USB port; `fsck.exfat -n` found only one inconsistency, in a macOS Spotlight cache file (`.Spotlight-V100/.../journalSync`), left unrepaired; all 80 copies on disk 1 re-hashed against the sync log and match; full rescan 0 errors.
+- 49 of those 80 copies kept the copy time as mtime (the final `utime` was lost in the dropout); contents verified identical.
+- Plan `ef135299d654` copied the remaining 510 files to disks 1 and 3 with no errors.
+- Result: 86,943 files (635.5 GB) identical on all 3 disks; 0 conflicts, 0 missing.
+- Lesson: keep the Toshiba on a direct USB port (no dropouts since moving it); disksync now stops cleanly on mid-run disconnects.
 
 ## Open Items
 
