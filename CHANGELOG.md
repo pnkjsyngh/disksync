@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/pnkjsyngh/disksync/compare/v1.0.0...v1.1.0) (2026-10-21)
+
+
+### Features
+
+* M1 real disk status, read-only scanner and 3-way diff report ([d82e650](https://github.com/pnkjsyngh/disksync/commit/d82e650a9b2db7e64778eced88de7f3a18260f9b))
+* read SMART health via restricted sudo helper ([a032e15](https://github.com/pnkjsyngh/disksync/commit/a032e15acadf71a5c17cd55d576073b7f5c5273e))
+
 ## 1.0.0 (2026-05-12)
 
 
